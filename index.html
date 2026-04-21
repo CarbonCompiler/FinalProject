@@ -1,0 +1,1043 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>Composing Digital Media</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" type="text/css" href="styleSheet.css">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/css/bootstrap.min.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.4.1/js/bootstrap.min.js"></script>
+</head>
+<body>
+
+    <header>
+        <h1>The Adventure of a Pitt Student</h1>
+        <span>Interactive Map</span>
+    </header>
+
+    <div id="breadcrumb"></div>
+
+    <div id="loc-meta">
+        <div id="loc-title"></div>
+        <div id="loc-desc"></div>
+    </div>
+
+    <div id="scene">
+        <!-- ── PHOTO ──────────────────────────────────────
+         When you have real photos, swap the placeholder
+         div for an <img> tag like this:
+
+         <img id="scene-photo"
+              src="photos/quad.jpg"
+              alt="Main Quad" />
+
+         Make sure the image is ~820×480 px or larger.
+    ─────────────────────────────────────────────────── -->
+        <img id="scene-photo"
+             src="map.jpg"
+             alt="Cathedral of Learning" />
+        <div id="scene-placeholder" style="display:none;">
+            <div class="ph-icon" id="ph-icon"></div>
+            <div class="ph-name" id="ph-name"></div>
+            <div style="font-size:12px;opacity:0.5;">replace with photo</div>
+        </div>
+        <!-- SVG drawn by JS — viewBox matches your photo dims -->
+        <svg id="hotspot-svg"
+             viewBox="0 0 820 480"
+             preserveAspectRatio="xMidYMid meet"
+             role="img"
+             aria-label="Campus location with clickable areas">
+        </svg>
+
+        <div id="nav-hint">hover to reveal · click to explore</div>
+    </div>
+
+    <div id="controls">
+        <button class="btn" id="btn-back" onclick="goBack()" disabled>← Back</button>
+        <button class="btn" id="btn-home" onclick="navigate('map')" disabled>Home</button>
+        <button class="btn" id="btn-camera" onclick="captureScene()">📷 Capture</button>
+        <div id="visit-count"></div>
+    </div>
+
+    <footer>Use mouse or tab to navigate hotspots</footer>
+
+    <!-- ═══════════════════════════════════════════════════════════
+         LOCATION DATA
+         ═══════════════════════════════════════════════════════════
+         Each location needs:
+           id        — unique string key
+           title     — display name
+           desc      — short description shown below the title
+           icon      — emoji shown in the placeholder (remove when using real photos)
+           photo     — path to your photo file  e.g. "photos/quad.jpg"
+                       set to null to show the placeholder instead
+           hotspots  — array of clickable regions
+
+         Each hotspot needs:
+           id        — unique string (within this location)
+           label     — text shown on hover
+           dest      — id of the location this hotspot leads to
+           shape     — "polygon" | "rect" | "ellipse"
+
+           For polygon:
+             points  — SVG points string  "x1,y1 x2,y2 x3,y3 ..."
+
+           For rect:
+             x, y, w, h  — position and size in viewBox units
+
+           For ellipse:
+             cx, cy      — centre point
+             rx, ry      — x-radius and y-radius
+
+         COORDINATE TIPS
+         ───────────────
+         The SVG viewBox is 820 × 480 (matching a typical landscape photo).
+         To find coordinates for your own photos:
+           1. Open the photo in any image editor that shows pixel coords.
+           2. Hover over the corners/centre of the area you want clickable.
+           3. Scale to 820 wide: new_x = pixel_x * (820 / original_width)
+              Scale to 480 tall: new_y = pixel_y * (480 / original_height)
+           OR use https://www.image-map.net — draw your areas, copy the
+              coords, and convert <area> coords to SVG format.
+    ═══════════════════════════════════════════════════════════ -->
+    <script>
+    const LOCATIONS = {
+
+        /* ── LOCATION 1: Starting point ─────────────────── */
+        map: {
+            title: "Starting Map",
+            desc: "The heart of campus — click a green-boxed building or path to explore.",
+            icon: "",
+            photo: "map.jpg",            // ← replace with  "photos/quad.jpg"
+            hotspots: [
+                {
+                    id: "to-library",
+                    label: "Library",
+                    dest: "library",
+                    shape: "polygon",
+                    points: "540,300  595,285  605,335 550,345"
+                    // ↑ four corners of the building in the photo
+                },
+                {
+                    id: "to-cath",
+                    label: "Cathedral",
+                    dest: "cath",
+                    shape: "polygon",
+                    points: "560,150 650,150 650,250 560,250"
+                },
+            ]
+        },
+        cath: {
+            title: "Cathedral of Learning Courtyard",
+            desc: "It is a beautiful, sunny day outside. Campus is buzzing with Springtime excitement, and you have just arrived to the front of the Cathedral of Learning. The Cathedral fills you with a sense of adventure, risk, and derive. You overhear passerbys, but all you can make out is something about... a King of Cathy, a Library of Infinite Despair, and a South Oakland Philanthropist...",
+            icon: "",
+            photo: "cath.jpeg",
+            hotspots: [
+                {
+                    id: "to-inter",
+                    label: "Walk towards Library",
+                    dest: "library_inter",
+                    shape: "rect",
+                    x: 50, y: 210, w: 120, h: 110
+                },
+                {
+                    id: "to-wpu",
+                    label: "Walk towards WPU",
+                    dest: "wpu",
+                    shape: "rect",
+                    x: 650, y: 210, w: 120, h: 110
+                },
+                {
+                    id: "king-awaits",
+                    label: "← Head into the Cathedral",
+                    dest: "throne",
+                    shape: "ellipse",
+                    cx: 400, cy: 400, rx: 90, ry: 50
+                },
+            ]
+        },
+        throne: {
+            title: "King of Cathy's Throne",
+            desc: "You enter into the Cathedral, only to find someone sitting upon a wooden throne. They appear to be just another college student, but you feel a sense of Wisdom exuding from the throne. Is this... the King of Cathy?",
+            icon: "",
+            photo: "king_sit.jpeg",
+            hotspots: [
+                {
+                    id: "to-king",
+                    label: "Talk to the King of Cathy",
+                    dest: "speakingKing1",
+                    shape: "rect",
+                    x: 370, y: 195, w: 60, h: 50
+                },
+                {
+                    id: "to-outside",
+                    label: "Leave Cathy",
+                    dest: "cath",
+                    shape: "rect",
+                    x: 650, y: 350, w: 120, h: 110
+                },
+            ]
+        },
+        speakingKing1: {
+            title: "The King Speaks",
+            desc: "You begin to open your mouth to say something, but he beats you to it.\n He says: 'Many students before you have come to me seeking answers, mainly because of the tuition spike of $1. All I can tell you is three things....'\n 'You must get LOCKed in if you want to survive on this campus.'\n 'There is a mystical being said to bestow ancient luck unto those who touch its nose.\n 'There is a fabled device that can calculate your GPA, and even change it.'\n'That is all.'",
+            icon: "",
+            photo: "king_talk.jpeg",
+            hotspots: [
+                {
+                    id: "to-outside",
+                    label: "Leave Cathy",
+                    dest: "cath",
+                    shape: "rect",
+                    x: 650, y: 350, w: 120, h: 110
+                },
+            ]
+        },
+        /* ── LOCATION 2 ──────────────────────────────────── */
+        library: {
+            title: "Library",
+            desc: "Four floors of study spaces, books, and a café. You've heard stories of students walking in while it's bright and sunny out, and they were never seen again...Want to head in?",
+            icon: "",
+            photo: "hillman.jpeg",
+            hotspots: [
+                {
+                    id: "into-lib",
+                    label: "Enter Hillman",
+                    dest: "hillman_in",
+                    shape: "rect",
+                    x: 390, y: 275, w: 50, h: 75
+                },
+                {
+                    id: "down-pos",
+                    label: "Continue down Sidewalk",
+                    dest: "outside_pos",
+                    shape: "rect",
+                    x: 175, y: 275, w: 100, h: 75
+                },
+            ]
+        },
+        hillman_in: {
+            title: "Library",
+            desc: "You headed inside Hillman and luckily found a seat; No tables were open, as usual, so you simply got seated in one of the cubicles. Right before you pulled out your computer, a friend sent you an Instagram Reel. You watch it fully and respond. Then, you try to put it down, but it's as if the phone is glued to your hand. You start to lose your train of focus and scroll to the next reel... You can't stop yourself.",
+            icon: "",
+            photo: "hillmanTrap.JPG",
+            hotspots: [
+                {
+                    id: "in-reels",
+                    label: "Scroll Reels",
+                    dest: "hillman_in",
+                    shape: "rect",
+                    x: 390, y: 275, w: 50, h: 75
+                },
+            ]
+        },
+        outside_pos: {
+            title: "Outside Posvar Hall",
+            desc: "You continue your aimless journey down the sidewalk and come across a massive Academic building. This is Posvar Hall, an old hall that was built on top of the old Pittsburgh Pirates stadium Home Plate. Will you enter, or continue your Derive?",
+            icon: "",
+            photo: "outside_pos.jpeg",
+            hotspots: [
+                {
+                    id: "into-pos",
+                    label: "Enter Posvar",
+                    dest: "in_pos",
+                    shape: "rect",
+                    x: 185, y: 265, w: 100, h: 75
+                },
+                {
+                    id: "down-side",
+                    label: "Continue down Sidewalk",
+                    dest: "sidePath",
+                    shape: "rect",
+                    x: 30, y: 400, w: 150, h: 75
+                },
+            ]
+        },
+        in_pos: {
+            title: "Inside Posvar Hall",
+            desc: "",
+            icon: "",
+            photo: "up_escalator.jpeg",
+            hotspots: [
+                {
+                    id: "up-esc",
+                    label: "Ride the Escalator",
+                    dest: "near_class",
+                    shape: "rect",
+                    x: 500, y: 265, w: 100, h: 75
+                },
+                {
+                    id: "outside-pos",
+                    label: "Go back outside",
+                    dest: "outside_pos",
+                    shape: "rect",
+                    x: 30, y: 400, w: 150, h: 75
+                },
+            ]
+        },
+        near_class: {
+            title: "A Door Ajar",
+            desc: "",
+            icon: "",
+            photo: "posvar_class.jpeg",
+            hotspots: [
+                {
+                    id: "into-pos",
+                    label: "Enter Classroom",
+                    dest: "in_class",
+                    shape: "rect",
+                    x: 455, y: 265, w: 100, h: 75
+                },
+                {
+                    id: "out-exit",
+                    label: "Leave Posvar",
+                    dest: "outside_pos",
+                    shape: "rect",
+                    x: 10, y: 200, w: 150, h: 75
+                },
+            ]
+        },
+        in_class: {
+            title: "The Empty Classroom",
+            desc: "",
+            icon: "",
+            photo: "classCalc.jpeg",
+            hotspots: [
+                {
+                    id: "into-pos",
+                    label: "Grab Calculator",
+                    action: "pickup",
+                    item: "Calculator",
+                    dest: "in_classNo",
+                    shape: "rect",
+                    x: 285, y: 375, w: 45, h: 55
+                },
+                {
+                    id: "out-exit",
+                    label: "Leave Posvar",
+                    dest: "outside_pos",      // ← change to another location once you have one
+                    shape: "rect",
+                    x: 10, y: 200, w: 150, h: 75
+                },
+            ]
+        },
+        in_classNo: {
+            title: "The Empty Classroom",
+            desc: "",
+            icon: "",
+            photo: "classNoCalc.jpeg",
+            hotspots: [
+                {
+                    id: "into-pos",
+                    label: "Grab Calculator",
+                    action: "pickup",
+                    item: "Calculator",
+                    dest: "in_classNo",
+                    shape: "rect",
+                    x: 285, y: 375, w: 45, h: 55
+                },
+                {
+                    id: "out-exit",
+                    label: "Leave Posvar",
+                    dest: "outside_pos",      // ← change to another location once you have one
+                    shape: "rect",
+                    x: 10, y: 200, w: 150, h: 75
+                },
+            ]
+        },
+        /* ── LOCATION 2 ──────────────────────────────────── */
+        library_inter: {
+            title: "Hillman Crossing",
+            desc: "An infamous crossing found just between Hillman, Cathy, and William Pitt Union. It's Pitt's Shibuya. Make sure you know which way you want to go, that walk sign timer is counting down quick!",
+            icon: "",
+            photo: "hillman_inter.jpeg",            // ← replace with  "photos/library.jpg"
+            hotspots: [
+                {
+                    id: "to-wpu",
+                    label: "Cross To WPU",
+                    dest: "wpu",      // ← change to another location once you have one
+                    shape: "rect",
+                    x: 575, y: 250, w: 100, h: 75
+                },
+                {
+                    id: "to-lib",
+                    label: "Cross to Library",
+                    dest: "library",
+                    shape: "rect",
+                    x: 100, y: 250, w: 100, h: 75
+                },
+            ]
+        },
+
+        /* ── LOCATION 3 ──────────────────────────────────── */
+        wpu: {
+            title: "William Pitt Union",
+            desc: "You approach the Student Union, WPU. Seems unassuming, dark, and quiet from the outside... odd. Usually it's teeming with students getting lunch from the numerous Dine-On-Campus spots. You hear a distant, faded roar somewhere...",
+            icon: "",
+            photo: "outside_wpu.JPG",
+            hotspots: [
+                {
+                    id: "inside-wpu",
+                    label: "Inside WPU",
+                    dest: "inWPU",
+                    shape: "rect",
+                    x: 255, y: 325, w: 85, h: 75
+                },
+                {
+                    id: "to-street",
+                    label: "Continue down Sidewalk",
+                    dest: "forbesPath",
+                    shape: "rect",
+                    x: 30, y: 375, w: 120, h: 75
+                },
+                {
+                    id: "to-Roc",
+                    label: "Turn around...",
+                    dest: "panther",
+                    shape: "rect",
+                    x: 600, y: 375, w: 50, h: 50
+                },
+            ]
+        },
+        inWPU: {
+            title: "William Pitt Union",
+            desc: "It's empty, and every thing is closed up. You wonder why they would be closed on a Weekend when most students are free from classes and ready to spend their meal swaps... Don't worry, I wonder that same thing every day.",
+            icon: "",
+            photo: "inside_wpu.JPG",
+            hotspots: [
+                {
+                    id: "back-wpu",
+                    label: "← Exit to Outside",
+                    dest: "wpu",
+                    shape: "ellipse",
+                    cx: 200, cy: 400, rx: 130, ry: 55
+                },
+            ]
+        },
+
+        panther: {
+            title: "Roc The Panther",
+            desc: "You turn towards the distant roaring and it seems to fade away all-together. In front of you, you see a Panther statue. But it isn't just any panther statue: It's Roc The Panther. It is said that any who touches his nose is bestowed an ancient fortune.",
+            icon: "",
+            photo: "panther_zoomOut.JPG",
+            hotspots: [
+                {
+                    id: "touch-roc",
+                    label: "Touch Roc",
+                    action: "pickup",
+                    item: "Ancient_Fortune",
+                    dest: "closePanther",
+                    shape: "ellipse",
+                    cx: 600, cy: 200, rx: 10, ry: 10
+                },
+                {
+                    id: "back-around",
+                    label: "← Turn Back Around",
+                    dest: "wpu",
+                    shape: "ellipse",
+                    cx: 350, cy: 400, rx: 130, ry: 55
+                },
+            ]
+        },
+        closePanther: {
+            title: "Ancient Fortune Bestowed",
+            desc: "You touched Roc's Golden Nose, just as thousands have before you. Nothing seems to happen... but there's a strange confidence residing in you now. You feel like you can do anything.",
+            icon: "",
+            photo: "panther_closeUp.JPG",
+            hotspots: [
+                {
+                    id: "back-around",
+                    label: "← Turn Back Around",
+                    dest: "wpu",
+                    shape: "ellipse",
+                    cx: 350, cy: 400, rx: 130, ry: 55
+                },
+            ]
+        },
+        forbesPath: {
+            title: "Forbes Avenue Path",
+            desc: "You continue down the sidewalk, and find yourself on Forbes Avenue, surrounded bustling cars, students, and city noise. To your left is Lawrence Hall, home to one of the largest lecture halls on campus, seating hundreds of students. Traveling further down this street might lead you to South Oakland.",
+            icon: "",
+            photo: "forbesWalk.JPG",
+            hotspots: [
+                {
+                    id: "to-lawr",
+                    label: "<-- Look at Lawrence Hall",
+                    dest: "Lawrence",
+                    shape: "rect",
+                    x: 30, y: 200, w: 120, h: 75
+                },
+                {
+                    id: "to-forbes",
+                    label: "Head down Forbes",
+                    dest: "forbesContinue",
+                    shape: "rect",
+                    x: 675, y: 250, w: 100, h: 75
+                },
+            ]
+        },
+        Lawrence: {
+            title: "Lawrence Hall",
+            desc: "You look to your left and see the grand facade of Lawrence Hall. You don't see any students milling around outside, so you wonder if there's a lecture happening inside. You feel a strong urge to attend the lecture, but you also feel like you should keep exploring...",
+            icon: "",
+            photo: "lawrence.JPG",
+            hotspots: [
+                {
+                    id: "back-aroundd",
+                    label: "Turn Back Around -->",
+                    dest: "forbesPath",
+                    shape: "ellipse",
+                    cx: 350, cy: 400, rx: 130, ry: 55
+                },
+            ]
+
+        },
+        forbesContinue: {
+            title: "Forbes Avenue Path",
+            desc: "Further into Forbes, you come across an entire block of buildings dedicated to Food services; There's a Starbucks, a MilkShake Factory, Piada, and so much more. It lures your nose and eyes towards it... Should you continue on your path?",
+            icon: "",
+            photo: "forbesCont.JPG",
+            hotspots: [
+                {
+                    id: "to-food",
+                    label: "<-- Look towards Food",
+                    dest: "food",
+                    shape: "rect",
+                    x: 30, y: 200, w: 120, h: 75
+                },
+                {
+                    id: "further-forbes",
+                    label: "Continue towards South Oakland",
+                    dest: "underBridge",
+                    shape: "rect",
+                    x: 400, y: 150, w: 100, h: 75
+                },
+            ]
+
+        },
+        food: {
+            title: "Forbes Food Block",
+            desc: "You let your nose guide your eyes towards the vast array of food options. But something in your mind is refusing to let you abandon your current path to stop and get a bite to eat. So you only gawk and stare inside the buildings, watching from afar the delicious food get prepared and consumed. ",
+            icon: "",
+            photo: "foodForbes.JPG",
+            hotspots: [
+                {
+                    id: "back-arounddd",
+                    label: "Turn Back Around -->",
+                    dest: "forbesContinue",
+                    shape: "ellipse",
+                    cx: 350, cy: 400, rx: 130, ry: 55
+                },
+            ]
+
+
+        },
+        underBridge: {
+            title: "Boulevard of the Allies Bridge",
+            desc: "After ignoring your senses and cravings, you venture further to the end of Forbes Avenue. At this point, you're off-campus, and in a sketchy looking area. During your trek here, some students were coming from under the bridge talking to each other about their tuition finally being resolved. While it is a sketchy looking underpass, you still need money to cover your tuition increase...",
+            icon: "",
+            photo: "underBridge.JPG",
+            hotspots: [
+                {
+                    id: "to-oph",
+                    label: "Walk Under Bridge",
+                    dest: "Ophelia",
+                    shape: "rect",
+                    x: 315, y: 150, w: 100, h: 75
+                },
+            ]
+        },
+        Ophelia: {
+            title: "House of Philanthropy",
+            desc: "You mustered the courage to travel through the underpass and come across a house, with one student standing at the top of the stairs. He looks like he's been waiting for you, staring at the ground... Maybe you should say something?",
+            icon: "",
+            photo: "standing.JPG",
+            hotspots: [
+                {
+                    id: "run-away",
+                    label: "Run back to Cathy",
+                    dest: "cath",
+                    shape: "rect",
+                    x: 30, y: 200, w: 120, h: 75
+                },
+                {
+                    id: "philTalk",
+                    label: "Talk to Him",
+                    dest: "Phil1",
+                    shape: "rect",
+                    x: 450, y: 195, w: 60, h: 50
+                },
+            ]
+
+
+        },
+        Phil1: {
+            title: "Money Offering",
+            desc: "You ask him if he is the South Oakland Philanthropist... He does not say anything. Instead, he lifts his arm up and a dollar magically appears in his hand. He is offering you your financial freedom... But something feels off. Why? And why is he silently doing so?",
+            icon: "",
+            photo: "fullHand.JPG",
+            hotspots: [
+                {
+                    id: "run-away",
+                    label: "Run back to Cathy",
+                    dest: "cath",
+                    shape: "rect",
+                    x: 30, y: 200, w: 120, h: 75
+                },
+                {
+                    id: "philTalk",
+                    label: "Take the Dollar",
+                    action: "pickup",
+                    item: "Dollar",
+                    dest: "Phil1",
+                    shape: "rect",
+                    x: 400, y: 195, w: 60, h: 50
+                },
+            ]
+        },
+        Phil2: {
+            title: "Money Acquired",
+            desc: "You cautiously take the dollar from his hand. With this dollar, your tuition can be fully paid off now!",
+            icon: "",
+            photo: "emptyHand.JPG",
+            hotspots: [
+                {
+                    id: "run-away",
+                    label: "Run back to Cathy",
+                    dest: "cath",
+                    shape: "rect",
+                    x: 30, y: 200, w: 120, h: 75
+                },
+                ]
+        },
+
+                /* ── LOCATION 4 ──────────────────────────────────── */
+        sidePath: {
+            title: "Crosswalk in Schenley",
+            desc: "Another cross-roads... To the left you can see a fountain sculpture depicting the greek god Pan in front of the Frick Fine Arts Building. To your right, a winding sidewalk leading to South Oakland.",
+            icon: "",
+            photo: "after_pos.jpeg",
+            hotspots: [
+                {
+                    id: "to-so",
+                    label: "Cross Towards South Oakland",
+                    dest: "wpu",
+                    shape: "rect",
+                    x: 675, y: 250, w: 100, h: 75
+                },
+                {
+                    id: "to-ffa",
+                    label: "Cross Towards Frick Fine Arts",
+                    dest: "ffa_inter",
+                    shape: "rect",
+                    x: 100, y: 250, w: 100, h: 75
+                },
+            ]
+        },
+        ffa_inter: {
+            title: "Frick Fine Arts Intersection",
+            desc: "You stroll through the previous intersection and find yourself right next to the fountain. But before you turn your head to look, you hear a distant click and metallic rattling, like someone LOCKing up their bike to a chain-link fence...",
+            icon: "",
+            photo: "nearFrick.jpeg",
+            hotspots: [
+                {
+                    id: "to-fountain",
+                    label: "Look at Fountain",
+                    dest: "ffaStatue",
+                    shape: "rect",
+                    x: 675, y: 350, w: 100, h: 75
+                },
+                {
+                    id: "to-cathhh",
+                    label: "Cross To Cathedral",
+                    dest: "cath",
+                    shape: "rect",
+                    x: 75, y: 400, w: 100, h: 75
+                },
+                {
+                    id: "cont-path",
+                    label: "Continue down Path",
+                    dest: "bridge",
+                    shape: "rect",
+                    x: 450, y: 325, w: 100, h: 75
+                },
+            ]
+        },
+        ffaStatue: {
+            title: "The Schenley Fountain",
+            desc: "You gawk at the large, beautiful fountain. The sculptor who created this sculpture of Pan was the same man who designed the Lincoln penny. There's something so mezmerizing about the fountain, you could just stay here staring at it for awhile...",
+            icon: "",
+            photo: "fountain.jpeg",
+            hotspots: [
+                {
+                    id: "to-fountain",
+                    label: "Stare at Fountain",
+                    dest: "ffaStatue",
+                    shape: "ellipse",
+                    cx: 435, cy: 250, rx: 130, ry: 55
+                },
+                {
+                    id: "look_back",
+                    label: "Look Away",
+                    dest: "ffa_inter",
+                    shape: "rect",
+                    x: 75, y: 400, w: 100, h: 75
+                },
+            ]
+        },
+        bridge: {
+            title: "Bridge of Locks",
+            desc: "After continuing down the path past Frick Fine Arts, you find yourself upon a bridge. But this isn't any ordinary bridge... It's the Lock Bridge! There's hundreds of locks clamped around the chain-link fences on both sides of the bridge. There seems to be some Force pulling you towards the path ahead...",
+            icon: "",
+            photo: "bridge.jpeg",
+            hotspots: [
+                {
+                    id: "look_lock",
+                    label: "Look at the Locks",
+                    dest: "locks",
+                    shape: "ellipse",
+                    cx: 695, cy: 335, rx: 5, ry: 5
+                },
+                {
+                    id: "force_phip",
+                    label: "Follow the Force",
+                    dest: "phipInter",
+                    shape: "rect",
+                    x: 335, y: 150, w: 100, h: 75
+                },
+            ]
+        },
+        locks: {
+            title: "The Mystical Locks",
+            desc: "You ignore the force drawing you away, and focus on the locks to your left. One of them is exuding a force of stern focus... ",
+            icon: "",
+            photo: "lockClose.jpeg",
+            hotspots: [
+                {
+                    id: "touch_lock",
+                    label: "Touch the Lock",
+                    action: "pickup",
+                    item: "Lock",
+                    dest: "locks",
+                    shape: "ellipse",
+                    cx: 400, cy: 275, rx: 40, ry: 50
+                },
+                {
+                    id: "look_side",
+                    label: "Return to the Sidewalk",
+                    dest: "bridge",
+                    shape: "rect",
+                    x: 25, y: 375, w: 100, h: 75
+                },
+            ]
+        },
+        phipInter: {
+            title: "Outside of Phipps Botanical Garden",
+            desc: "The strange force pulls you along the path, until you're just outside of Phipps Botanical Garden. To your right is Phipps itself, but you notice a ruin-like structure up a distant hill...",
+            icon: "",
+            photo: "nearPhips.jpeg",
+            hotspots: [
+                {
+                    id: "to-phi",
+                    label: "Look at Phipps -->",
+                    dest: "phip",
+                    shape: "rect",
+                    x: 700, y: 250, w: 100, h: 75
+                },
+                {
+                    id: "to-ruins",
+                    label: "Head to Ruins",
+                    dest: "ruin",
+                    shape: "rect",
+                    x: 35, y: 200, w: 100, h: 75
+                },
+            ]
+        },
+        phip: {
+            title: "Outside of Phipps Botanical Garden",
+            desc: "The strange force pulls you along the path, until you're just outside of Phipps Botanical Garden. To your right is Phipps itself, but you notice a ruin-like structure up a distant hill...",
+            icon: "",
+            photo: "phipps.jpg",
+            hotspots: [
+                {
+                    id: "look_back2",
+                    label: "Look Away",
+                    dest: "phipInter",
+                    shape: "rect",
+                    x: 75, y: 400, w: 100, h: 75
+                },
+            ]
+        },
+        ruin: {
+            title: "The Ruins",
+            desc: "You head up the hill towards the ruins, and find yourself in front of a large stone structure. It looks like it was once a grand building, but now it's just a shell of its former self. You feel a strange energy emanating from the ruins, and you can't help but feel drawn to it... It feels like freedom right in front of your face, but so far from your grasps...",
+            icon: "",
+            photo: "ruins.jpeg",
+            hotspots: [
+                {
+                    id: "look_back3",
+                    label: "Leave the Ruins",
+                    dest: "phipInter",
+                    shape: "rect",
+                    x: 75, y: 400, w: 100, h: 75
+                },
+            ]
+        },
+        WIN: {
+            title: "THE END",
+            desc: "After getting LOCKED IN, Calculating (and even changing) your GPA, Acquiring the Ancient Luck, as well as the last dollar to your Tuition, you've beat college!",
+            icon: "",
+            photo: "winner.jpeg",
+            hotspots:[]
+        }
+
+            /* ── LOCATION 5 ──────────────────────────────────── */
+
+        };
+
+        let history = [];
+        let current = "map";    
+        let visitedSet = new Set();
+
+        const playerState = {
+            inventory: []          // items collected so far
+        };
+        const REQUIRED_ITEMS = ["Ancient_Fortune", "Lock", "Dollar", "Calculator"];
+
+        function hasItem(id) {
+            return playerState.inventory.includes(id);
+        }
+
+        function canEscape() {
+            return REQUIRED_ITEMS.every(id => hasItem(id));
+        }
+        function captureScene() {
+            const photo = document.getElementById("scene-photo");
+
+            const canvas = document.createElement("canvas");
+            canvas.width = 820;
+            canvas.height = 480;
+            const ctx = canvas.getContext("2d");
+
+            ctx.drawImage(photo, 0, 0, 820, 480);
+
+            const link = document.createElement("a");
+            link.download = `${current}-capture.png`;
+            link.href = canvas.toDataURL("image/png");
+            link.click();
+        }
+        /* ── Render a location ─────────────────────────── */
+        function renderScene(id) {
+            const loc = LOCATIONS[id];
+            if (!loc) { console.error("Unknown location:", id); return; }
+
+            visitedSet.add(id);
+
+            /* Meta text */
+            document.getElementById("loc-title").textContent = loc.title;
+            document.getElementById("loc-desc").textContent = loc.desc;
+            document.getElementById("visit-count").textContent =
+                `${visitedSet.size} / ${Object.keys(LOCATIONS).length} locations visited`;
+
+            /* Breadcrumb */
+            const trail = [...history, id].map((h, i, arr) => {
+                const name = LOCATIONS[h]?.title ?? h;
+                return i === arr.length - 1
+                    ? `<span>${name}</span>`
+                    : name;
+            }).join(" › ");
+            document.getElementById("breadcrumb").innerHTML = trail;
+
+            /* Photo or placeholder */
+            const placeholder = document.getElementById("scene-placeholder");
+            let photo = document.getElementById("scene-photo");
+
+            if (loc.photo) {
+                if (!photo) {
+                    photo = document.createElement("img");
+                    photo.id = "scene-photo";
+                    document.getElementById("scene").insertBefore(photo, document.getElementById("hotspot-svg"));
+                }
+                photo.src = loc.photo;
+                photo.alt = loc.title;
+                placeholder.style.display = "none";
+                photo.style.display = "block";
+            } else {
+                if (photo) photo.style.display = "none";
+                placeholder.style.display = "flex";
+                document.getElementById("ph-icon").textContent = loc.icon;
+                document.getElementById("ph-name").textContent = loc.title;
+            }
+
+            /* Buttons */
+            document.getElementById("btn-back").disabled = history.length === 0;
+            document.getElementById("btn-home").disabled = id === "map";
+
+            /* Draw hotspots */
+            if (canEscape() && id === "ruin") {
+                const escapeHotspot = {
+                    id: "to-escape",
+                    label: "Something feels different...",
+                    dest: "WIN",
+                    shape: "ellipse",
+                    cx: 410, cy: 220, rx: 130, ry: 35
+                };
+                drawHotspots([...loc.hotspots, escapeHotspot]);
+            } else {
+                drawHotspots(loc.hotspots);
+            }
+
+            /* Fade-in animation */
+            const scene = document.getElementById("scene");
+            scene.classList.remove("scene-enter");
+            void scene.offsetWidth; // reflow
+            scene.classList.add("scene-enter");
+        }
+
+        /* ── Draw SVG hotspots ─────────────────────────── */
+        function drawHotspots(hotspots) {
+            const svg = document.getElementById("hotspot-svg");
+            svg.innerHTML = "";
+            hotspots
+                .filter(h => {
+                    // hide pickup hotspots for items already in inventory
+                    if (h.action === "pickup" && hasItem(h.item)) return false;
+                    return true;
+                })
+                .forEach(h => {
+                    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                    g.setAttribute("class", "hotspot");
+                    g.setAttribute("role", "button");
+                    g.setAttribute("tabindex", "0");
+                    g.setAttribute("aria-label", `Go to ${h.label}`);
+
+                    /* ── Shape ── */
+                    let shape;
+                    if (h.shape === "polygon") {
+                        shape = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+                        shape.setAttribute("points", h.points);
+
+                    } else if (h.shape === "rect") {
+                        shape = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                        shape.setAttribute("x", h.x);
+                        shape.setAttribute("y", h.y);
+                        shape.setAttribute("width", h.w);
+                        shape.setAttribute("height", h.h);
+                        shape.setAttribute("rx", "8");
+
+                    } else if (h.shape === "ellipse") {
+                        shape = document.createElementNS("http://www.w3.org/2000/svg", "ellipse");
+                        shape.setAttribute("cx", h.cx);
+                        shape.setAttribute("cy", h.cy);
+                        shape.setAttribute("rx", h.rx);
+                        shape.setAttribute("ry", h.ry);
+                    }
+                    shape.setAttribute("class", "hs-shape");
+
+                    /* ── Centre point for label ── */
+                    const cx = computeCx(h);
+                    const cy = computeCy(h);
+
+                    /* ── Label group ── */
+                    const labelG = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                    labelG.setAttribute("class", "hs-label");
+
+                    const labelBg = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                    labelBg.setAttribute("class", "hs-label-bg");
+                    const textW = h.label.length * 7.5 + 24;
+                    labelBg.setAttribute("x", cx - textW / 2);
+                    labelBg.setAttribute("y", cy - 26);
+                    labelBg.setAttribute("width", textW);
+                    labelBg.setAttribute("height", 40);
+                    labelBg.setAttribute("rx", "5");
+
+                    const labelTxt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                    labelTxt.setAttribute("class", "hs-label-text");
+                    labelTxt.setAttribute("x", cx);
+                    labelTxt.setAttribute("y", cy - 10);
+                    labelTxt.textContent = h.label;
+
+                    const arrowTxt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                    arrowTxt.setAttribute("class", "hs-arrow");
+                    arrowTxt.setAttribute("x", cx);
+                    arrowTxt.setAttribute("y", cy + 8);
+                    arrowTxt.textContent = "click to enter";
+
+                    labelG.appendChild(labelBg);
+                    labelG.appendChild(labelTxt);
+                    labelG.appendChild(arrowTxt);
+
+                    g.appendChild(shape);
+                    g.appendChild(labelG);
+
+                    /* ── Events ── */
+                    g.addEventListener("click", () => {
+                        if (h.action === "pickup") {
+                            pickupItem(h);
+                        } else {
+                            navigate(h.dest);
+                        }
+                    });
+                    g.addEventListener("keydown", e => {
+                        if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            navigate(h.dest);
+                        }
+                    });
+
+                    svg.appendChild(g);
+                });
+        }
+
+        /* ── Navigation ────────────────────────────────── */
+        function navigate(dest) {
+            if (!LOCATIONS[dest]) {
+                console.warn("No location defined for:", dest);
+                return;
+            }
+            history.push(current);
+            current = dest;
+            renderScene(current);
+        }
+        function pickupItem(hotspot) {
+            if (hasItem(hotspot.item)) return;
+
+            playerState.inventory.push(hotspot.item);
+            updateHUD();
+
+            renderScene(current);
+        }
+
+        function goBack() {
+            if (!history.length) return;
+            current = history.pop();
+            renderScene(current);
+        }
+
+        /* ── Helpers: find centroid of any hotspot ─────── */
+        function computeCx(h) {
+            if (h.shape === "ellipse") return h.cx;
+            if (h.shape === "rect") return h.x + h.w / 2;
+            // polygon — average x coords
+            const xs = h.points.trim().split(/\s+/).map(p => parseFloat(p.split(",")[0]));
+            return xs.reduce((a, b) => a + b, 0) / xs.length;
+        }
+
+        function computeCy(h) {
+            if (h.shape === "ellipse") return h.cy;
+            if (h.shape === "rect") return h.y + h.h / 2;
+            const ys = h.points.trim().split(/\s+/).map(p => parseFloat(p.split(",")[1]));
+            return ys.reduce((a, b) => a + b, 0) / ys.length;
+        }
+        function updateHUD() {
+            const count = playerState.inventory.length;
+            const total = REQUIRED_ITEMS.length;
+            document.getElementById("visit-count").textContent =
+                `Items: ${count} / ${total}  ·  ${visitedSet.size} locations visited`;
+        }
+        /* ── Boot ───────────────────────────────────────── */
+        renderScene(current);
+    </script>
+</body>
+</html>
